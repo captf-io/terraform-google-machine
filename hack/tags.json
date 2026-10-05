@@ -1,0 +1,5 @@
+{
+  "attribute": "labels",
+  "expression": "local.tags",
+  "exempt": {}
+}

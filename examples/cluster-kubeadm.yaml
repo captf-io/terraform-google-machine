@@ -1,0 +1,261 @@
+# Copyright 2026 The CAPTF Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# A kubeadm cluster on the gcp modules: a TerraformCluster with an internal
+# API load balancer, a KubeadmControlPlane, a MachineDeployment of workers and
+# an autoscaled MachinePool. Apply examples/identity.yaml first, and have the
+# network ready (cluster/README.md "Prerequisites"):
+#
+#   clusterctl generate yaml --from examples/cluster-kubeadm.yaml | kubectl apply -n team-a -f -
+#
+# Every node runs the kubelet with cloud-provider: external; deploy
+# cloud-provider-gcp into the workload cluster (gce.conf from the
+# TerraformCluster's exports: project-id, network-name, subnetwork-name,
+# node-tags) so Nodes get the gce:// provider IDs the modules report.
+#
+# The Pod and Service CIDRs must not overlap the VPC's subnetworks or the
+# proxy-only subnet (an auto-mode network uses 10.128.0.0/9).
+#
+# GCP_IMAGE names one image per Kubernetes version: {slug} becomes v1-33-4
+# for v1.33.4 (machine/README.md "Inputs"). Build it with image-builder and
+# name it to match.
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: "${CLUSTER_NAME}"
+spec:
+  clusterNetwork:
+    apiServerPort: 6443
+    pods:
+      cidrBlocks:
+      - "${POD_CIDR:=192.168.0.0/16}"
+    services:
+      cidrBlocks:
+      - "${SERVICE_CIDR:=10.96.0.0/12}"
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: "${CLUSTER_NAME}-control-plane"
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: TerraformCluster
+    name: "${CLUSTER_NAME}"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: TerraformCluster
+metadata:
+  name: "${CLUSTER_NAME}"
+spec:
+  source:
+    image: ghcr.io/captf-io/gcp-cluster:v0.1.0-opentofu
+  identityRef:
+    name: "${TERRAFORM_IDENTITY_NAME:=gcp}"
+  # Machines and pools without their own identityRef use this one.
+  defaults:
+    identityRef:
+      name: "${TERRAFORM_IDENTITY_NAME:=gcp}"
+  variables:
+    network: "${GCP_NETWORK}"
+    subnetwork: "${GCP_SUBNETWORK}"
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: KubeadmControlPlane
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+spec:
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT:=3}
+  version: "${KUBERNETES_VERSION}"
+  machineTemplate:
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: TerraformMachineTemplate
+        name: "${CLUSTER_NAME}-control-plane"
+  # A module that fails deterministically must not replace machines forever:
+  # three attempts, five minutes apart (control-planes/kubeadm.md).
+  remediation:
+    maxRetry: 3
+    retryPeriodSeconds: 300
+  kubeadmConfigSpec:
+    # bindPort equals Cluster.spec.clusterNetwork.apiServerPort, the API load
+    # balancer's backend port; kubeadm never reads the Cluster field.
+    initConfiguration:
+      localAPIEndpoint:
+        bindPort: 6443
+      nodeRegistration:
+        kubeletExtraArgs:
+        - name: cloud-provider
+          value: external
+    joinConfiguration:
+      controlPlane:
+        localAPIEndpoint:
+          bindPort: 6443
+      nodeRegistration:
+        kubeletExtraArgs:
+        - name: cloud-provider
+          value: external
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: TerraformMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+spec:
+  template:
+    spec:
+      source:
+        image: ghcr.io/captf-io/gcp-machine:v0.1.0-opentofu
+      variables:
+        image: "${GCP_IMAGE}"
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  clusterName: "${CLUSTER_NAME}"
+  replicas: ${WORKER_MACHINE_COUNT:=2}
+  selector:
+    matchLabels:
+  template:
+    spec:
+      clusterName: "${CLUSTER_NAME}"
+      version: "${KUBERNETES_VERSION}"
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: "${CLUSTER_NAME}-md-0"
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: TerraformMachineTemplate
+        name: "${CLUSTER_NAME}-md-0"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: TerraformMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  template:
+    spec:
+      source:
+        image: ghcr.io/captf-io/gcp-machine:v0.1.0-opentofu
+      variables:
+        image: "${GCP_IMAGE}"
+        machine_type: "${GCP_WORKER_MACHINE_TYPE:=n2-standard-4}"
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfigTemplate
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+          - name: cloud-provider
+            value: external
+---
+# An autoscaled pool: the GCE autoscaler owns the size between the two
+# annotations, and CAPTF writes the observed size back to spec.replicas,
+# which is left unset (https://captf.io/docs/user-guide/machine-pools.html).
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachinePool
+metadata:
+  name: "${CLUSTER_NAME}-pool-0"
+  annotations:
+    cluster.x-k8s.io/cluster-api-autoscaler-node-group-min-size: "${POOL_MIN_SIZE:=1}"
+    cluster.x-k8s.io/cluster-api-autoscaler-node-group-max-size: "${POOL_MAX_SIZE:=5}"
+spec:
+  clusterName: "${CLUSTER_NAME}"
+  template:
+    metadata:
+      # Registered by every pool instance's kubelet (machinepool/README.md
+      # "Bootstrap").
+      labels:
+        pool: "${CLUSTER_NAME}-pool-0"
+    spec:
+      clusterName: "${CLUSTER_NAME}"
+      version: "${KUBERNETES_VERSION}"
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfig
+          name: "${CLUSTER_NAME}-pool-0"
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: TerraformMachinePool
+        name: "${CLUSTER_NAME}-pool-0"
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfig
+metadata:
+  name: "${CLUSTER_NAME}-pool-0"
+spec:
+  joinConfiguration:
+    nodeRegistration:
+      kubeletExtraArgs:
+      - name: cloud-provider
+        value: external
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: TerraformMachinePool
+metadata:
+  name: "${CLUSTER_NAME}-pool-0"
+  # CAPTF finds the Cluster by this label; setting it saves waiting for CAPI.
+  labels:
+    cluster.x-k8s.io/cluster-name: "${CLUSTER_NAME}"
+spec:
+  source:
+    image: ghcr.io/captf-io/gcp-machinepool:v0.1.0-opentofu
+  variables:
+    image: "${GCP_IMAGE}"
+---
+# Workers: InfrastructureReady=False (the module's health output) is
+# unhealthy after the timeout, which must exceed apply time plus one drift
+# interval: 2700 s with the default 30-minute interval (CONVENTIONS.md
+# section 17).
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineHealthCheck
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  clusterName: "${CLUSTER_NAME}"
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/deployment-name: "${CLUSTER_NAME}-md-0"
+  checks:
+    nodeStartupTimeoutSeconds: 1200
+    unhealthyMachineConditions:
+    - type: InfrastructureReady
+      status: "False"
+      timeoutSeconds: 2700
+---
+# Control plane: longer windows, since replacing a control-plane machine is
+# costlier and kubeadm init or join does more than a worker join.
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineHealthCheck
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+spec:
+  clusterName: "${CLUSTER_NAME}"
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/control-plane: ""
+  checks:
+    nodeStartupTimeoutSeconds: 1800
+    unhealthyMachineConditions:
+    - type: InfrastructureReady
+      status: "False"
+      timeoutSeconds: 3600

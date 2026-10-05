@@ -1,0 +1,36 @@
+# Copyright 2026 The CAPTF Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# trivy ignore file for `make scan` (trivy config). Every ignore needs a
+# statement that says why the finding is acceptable (CONVENTIONS.md
+# section 15), and paths so it cannot hide the same finding elsewhere.
+#
+# The node-to-node rule matches its sources by service account
+# (source_service_accounts) and sets no source_ranges. trivy reads a rule
+# without source_ranges as open to 0.0.0.0/0, so it reports the rule as
+# public; it is not: only instances that run as the cluster's node service
+# accounts match it.
+misconfigurations:
+  - id: GCP-0030
+    paths:
+      - node_instance.tf
+    statement: >-
+      False positive: metadata sets block-project-ssh-keys = TRUE inside a
+      merge() trivy does not evaluate; the unit tests assert the value.
+  - id: GCP-0036
+    paths:
+      - node_instance.tf
+    statement: >-
+      False positive: metadata sets enable-oslogin = TRUE inside a merge()
+      trivy does not evaluate; the unit tests assert the value.

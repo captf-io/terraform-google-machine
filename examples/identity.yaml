@@ -1,0 +1,64 @@
+# Copyright 2026 The CAPTF Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# The credentials the gcp modules run with: a Secret in the provider's
+# namespace and the cluster-scoped TerraformClusterIdentity that names it
+# (https://captf.io/docs/user-guide/identities.html). Admin-applied, once per
+# set of credentials, before any cluster that uses them:
+#
+#   clusterctl generate yaml --from examples/identity.yaml | kubectl apply -f -
+#
+# Every key reaches the module's Job as an environment variable and as a file
+# under /var/run/captf/credentials/<key>. The values below are placeholders.
+#
+# The roles the service account needs, and where to grant each, are in
+# cluster/README.md "Prerequisites". Grant roles/iam.serviceAccountUser on the
+# two node service accounts only, never project-wide: project-wide it lets
+# the identity run a VM as any service account of the project.
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: TerraformClusterIdentity
+metadata:
+  name: "${TERRAFORM_IDENTITY_NAME:=gcp}"
+spec:
+  secretRef:
+    name: "${TERRAFORM_IDENTITY_NAME:=gcp}"
+    namespace: captf-system
+  allowedNamespaces:
+    list:
+    - "${NAMESPACE}"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: "${TERRAFORM_IDENTITY_NAME:=gcp}"
+  namespace: captf-system
+type: Opaque
+stringData:
+  # The project and region the modules use unless the TerraformCluster sets
+  # spec.variables.project and spec.variables.region.
+  GOOGLE_PROJECT: "${GCP_PROJECT}"
+  GOOGLE_REGION: "${GCP_REGION:=us-central1}"
+  # A service account key, or an external_account (workload identity
+  # federation) configuration. Prefer federation where your management
+  # cluster can provide a token source; a key is a long-lived secret.
+  GOOGLE_CREDENTIALS: |
+    {
+      "type": "service_account",
+      "project_id": "replace-me",
+      "private_key_id": "replace-me",
+      "private_key": "replace-me",
+      "client_email": "captf@replace-me.iam.gserviceaccount.com",
+      "client_id": "replace-me",
+      "token_uri": "https://oauth2.googleapis.com/token"
+    }
