@@ -11,6 +11,34 @@ instance per Cluster API Machine, control plane or worker. Image:
 `TerraformMachineTemplate`; contract:
 <https://captf.io/docs/module-author/contract/v1alpha1/machine.html>.
 
+## Usage
+
+CAPTF runs this module from the module image `ghcr.io/captf-io/gcp-machine`: set the image on
+a `TerraformMachine`'s `spec.source.image` (through a `TerraformMachineTemplate`), and the controller renders every
+input. The module is also published to the Terraform Registry as
+`captf-io/machine/google` and can be called directly:
+
+```hcl
+module "machine" {
+  source  = "captf-io/machine/google"
+  version = "~> 0.1"
+
+  # The contract inputs the controller would render (captf_contract,
+  # captf_cluster, captf_object, captf_tags, ...; see Inputs), and any
+  # user variables.
+}
+```
+
+Called directly, the module is a CAPTF root module first:
+
+- it configures its own `provider "google"` block, so the calling
+  module cannot use `count`, `for_each` or `depends_on` on it, and the
+  provider takes its credentials from the environment (see Identity
+  Secret);
+- its providers are pinned to exact versions (`versions.tf`), which the
+  calling configuration has to accept;
+- you set the `captf_*` inputs yourself.
+
 ## What it creates
 
 | Resource | Type | When |
@@ -132,7 +160,7 @@ the plan fails with instructions.
 The same Secret as the cluster role: `GOOGLE_CREDENTIALS` (or
 `GOOGLE_APPLICATION_CREDENTIALS` and a file key). The project and region come
 from the exports, not from `GOOGLE_PROJECT` and `GOOGLE_REGION`. See
-[examples/identity.yaml](examples/identity.yaml).
+[examples/identity.yaml](https://github.com/captf-io/terraform-google-machine/blob/main/examples/identity.yaml).
 
 ## Bootstrap
 
@@ -239,7 +267,7 @@ and a MachineHealthCheck can replace it.
 ## Examples
 
 A TerraformMachineTemplate with this image (from
-[examples/cluster-kubeadm.yaml](examples/cluster-kubeadm.yaml)):
+[examples/cluster-kubeadm.yaml](https://github.com/captf-io/terraform-google-machine/blob/main/examples/cluster-kubeadm.yaml)):
 
 ```yaml
 apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
