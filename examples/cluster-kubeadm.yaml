@@ -58,7 +58,7 @@ metadata:
   name: "${CLUSTER_NAME}"
 spec:
   source:
-    image: ghcr.io/captf-io/gcp-cluster:v0.1.0-opentofu
+    image: ghcr.io/captf-io/module-images/gcp-cluster:v0.1.0-opentofu
   identityRef:
     name: "${TERRAFORM_IDENTITY_NAME:=gcp}"
   # Machines and pools without their own identityRef use this one.
@@ -114,7 +114,7 @@ spec:
   template:
     spec:
       source:
-        image: ghcr.io/captf-io/gcp-machine:v0.1.0-opentofu
+        image: ghcr.io/captf-io/module-images/gcp-machine:v0.1.0-opentofu
       variables:
         image: "${GCP_IMAGE}"
 ---
@@ -149,7 +149,7 @@ spec:
   template:
     spec:
       source:
-        image: ghcr.io/captf-io/gcp-machine:v0.1.0-opentofu
+        image: ghcr.io/captf-io/module-images/gcp-machine:v0.1.0-opentofu
       variables:
         image: "${GCP_IMAGE}"
         machine_type: "${GCP_WORKER_MACHINE_TYPE:=n2-standard-4}"
@@ -218,7 +218,7 @@ metadata:
     cluster.x-k8s.io/cluster-name: "${CLUSTER_NAME}"
 spec:
   source:
-    image: ghcr.io/captf-io/gcp-machinepool:v0.1.0-opentofu
+    image: ghcr.io/captf-io/module-images/gcp-machinepool:v0.1.0-opentofu
   variables:
     image: "${GCP_IMAGE}"
 ---

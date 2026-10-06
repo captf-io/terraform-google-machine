@@ -34,13 +34,13 @@ Terraform/OpenTofu root module behind `TerraformMachine`, cloned from a
 Cluster API Machine, control plane or worker. Contract:
 <https://captf.io/docs/module-author/contract/v1alpha1/machine.html>.
 
-This repository holds the module code. The image `ghcr.io/captf-io/gcp-machine`
-is published from
-[captf-io/gcp-modules](https://github.com/captf-io/gcp-modules).
+This repository holds the module code. The image `ghcr.io/captf-io/module-images/gcp-machine`
+is built and published by
+[module-images](https://github.com/captf-io/module-images) from this repository's releases.
 
 ## Using it
 
-CAPTF runs this module from the module image `ghcr.io/captf-io/gcp-machine`: set
+CAPTF runs this module from the module image `ghcr.io/captf-io/module-images/gcp-machine`: set
 the image on a `TerraformMachine`'s `spec.source.image` (through a
 `TerraformMachineTemplate`), and the controller renders every input. The module
 is also published to the Terraform Registry as `captf-io/machine/google` and can
@@ -306,7 +306,7 @@ spec:
   template:
     spec:
       source:
-        image: ghcr.io/captf-io/gcp-machine:v0.1.0-opentofu
+        image: ghcr.io/captf-io/module-images/gcp-machine:v0.1.0-opentofu
       variables:
         image: projects/my-images/global/images/capi-ubuntu-2404-{slug}
 ```

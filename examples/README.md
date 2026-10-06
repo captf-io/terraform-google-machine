@@ -1,7 +1,7 @@
 # Examples
 
 Manifests that use the gcp module images, which are built by
-[gcp-modules](https://github.com/captf-io/gcp-modules). The same two
+[module-images](https://github.com/captf-io/module-images) from this repository's releases. The same two
 files are in each of the three role repositories. Both are
 [clusterctl](https://cluster-api.sigs.k8s.io/clusterctl/overview) templates:
 `clusterctl generate yaml --from <file>` fills the `${VARIABLE}`
@@ -14,7 +14,7 @@ placeholders from the environment, with the defaults after `:=`.
 
 The manifests pin every image to a release, `v0.1.0-opentofu`: change the
 tag to the release you deploy (`vX.Y.Z-opentofu` or `vX.Y.Z-terraform`), or
-to a digest. The moving tags (`opentofu`, `terraform`, `edge-<runtime>`) are
+to a digest. The moving tags (`opentofu`, `terraform`) are
 for trying things out, never for anything you keep.
 
 The images reference a network and node images that must exist first; see
